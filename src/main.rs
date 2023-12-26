@@ -1,3 +1,4 @@
+#[warn(dead_code)]
 use std::collections::HashMap;
 
 fn main() {
@@ -7,29 +8,22 @@ fn main() {
     let value = arguments.next().expect("no value found");
     
     println!("The key is '{}' and the value is '{}'!", key, value);
-    
-    let contents = format!("{}\t{}\n", key, value);    
-    
-    std::fs::write("kv.db", contents).unwrap();
 
-    let database = Database::new().expect("Database::new() panicked");
+    let mut database = Database::new().expect("Database::new() panicked");
+    database.insert(key.to_uppercase(), value.clone());
+    database.insert(key, value);
+    database.flush();
 }
 
 struct Database {
     map: HashMap<String, String>,
+    flushed: bool
 }
 
 impl Database {
     fn new() -> Result<Database, std::io::Error> {
         // read file
 
-        // let contents = match std::fs::read_to_string("kv.db") {
-            // Ok(c) => c,
-            // Err(e) => {
-                // return Err(e);
-            // }
-        // };
-        // same thing as:
         let mut map = HashMap::new();
         let contents = std::fs::read_to_string("kv.db")?;
         for line in contents.lines() {
@@ -40,8 +34,43 @@ impl Database {
         }
         // parse string
         // populate map
-        Ok(Database {
-            map: map,
-        })
+        Ok(
+            Database{
+                map: map,
+                flushed: false
+            }
+        )
+    }
+
+    fn insert(&mut self, key: String, value: String) {
+        self.map.insert(key, value);
+    }
+
+    fn flush(&mut self) {
+        do_flush(self);
+    }
+}
+
+impl Drop for Database {
+    fn drop(&mut self) {
+        do_flush(self);
+    }
+
+}
+
+fn do_flush(db: &mut Database) {
+    if !db.flushed {
+        let mut contents = String::new();
+        for (key, value) in &db.map {
+            contents.push_str(key);
+            contents.push('\t');
+            contents.push_str(value);
+            contents.push('\n');
+        }
+        
+        std::fs::write("kv.db", contents).expect("failed to write");
+        
+        db.flushed = true;
+        println!("Data written to disk");
     }
 }
